@@ -7,7 +7,6 @@ const uwire = readFileSync('./node_modules/uwire/esm/index.js').toString();
 const uhandlers = readFileSync('./node_modules/uhandlers/esm/index.js').toString();
 
 const init = readFileSync('./esm/init.js').toString();
-const node = readFileSync('./esm/node.js').toString();
 const handlers = readFileSync('./esm/handlers.js').toString();
 const rabbit = readFileSync('./esm/rabbit.js').toString();
 const index = readFileSync('./esm/index.js').toString();
@@ -16,7 +15,6 @@ const outcome = [
   createContent.replace(/^export\s+.*/mg, ''),
   dropIE(uwire),
   dropIE(uhandlers),
-  dropIE(node).replace(/^\{.+?\};/mg, ''),
   dropIE(handlers),
   dropIE(rabbit),
   dropIE(index).replace(/\bcache\b/g, '_cache').replace(/^\{/m, 'return {')

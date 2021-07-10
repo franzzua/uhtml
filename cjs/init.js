@@ -211,30 +211,6 @@ const text = node => {
 
 
 
-// this "hack" tells the library if the browser is IE11 or old Edge
-const isImportNodeLengthWrong = document.importNode.length != 1;
-
-// IE11 and old Edge discard empty nodes when cloning, potentially
-// resulting in broken paths to find updates. The workaround here
-// is to import once, upfront, the fragment that will be cloned
-// later on, so that paths are retrieved from one already parsed,
-// hence without missing child nodes once re-cloned.
-const createFragment = isImportNodeLengthWrong ?
-  (text, type, normalize) => document.importNode(
-    createContent(text, type, normalize),
-    true
-  ) :
-  createContent;
-
-// IE11 and old Edge have a different createTreeWalker signature that
-// has been deprecated in other browsers. This export is needed only
-// to guarantee the TreeWalker doesn't show warnings and, ultimately, works
-const createWalker = isImportNodeLengthWrong ?
-  fragment => document.createTreeWalker(fragment, 1 | 128, null, false) :
-  fragment => document.createTreeWalker(fragment, 1 | 128);
-
-
-
 
 
 
@@ -408,7 +384,7 @@ const prefix = 'isµ';
 // should be parsed once, and once only, as it will always represent the same
 // content, within the exact same amount of updates each time.
 // This cache relates each template to its unique content and updates.
-const cache = umap(new WeakMap);
+const cache = new WeakMapSet;
 
 // a RegExp that helps checking nodes that cannot contain comments
 const textOnly = /^(?:plaintext|script|style|textarea|title|xmp)$/i;
@@ -441,10 +417,10 @@ const createEntry = (type, template) => {
 // operation based on the same template, i.e. data => html`<p>${data}</p>`
 const mapTemplate = (type, template) => {
   const text = instrument(template, prefix, type === 'svg');
-  const content = createFragment(text, type);
+  const content = createContent(text, type);
   // once instrumented and reproduced as fragment, it's crawled
   // to find out where each update is in the fragment tree
-  const tw = createWalker(content);
+  const tw = document.createTreeWalker(content, 1 | 128);
   const nodes = [];
   const length = template.length - 1;
   let i = 0;
@@ -584,58 +560,53 @@ const unrollValues = ({stack}, values, length) => {
  * @param {string[]} template The template literals used to the define the content.
  * @param {Array} values Zero, one, or more interpolated values to render.
  */
-function Hole(type, template, values) {
-  this.type = type;
-  this.template = template;
-  this.values = values;
+class Hole {
+  constructor(type, template, values) {
+    this.type = type;
+    this.template = template;
+    this.values = values;
+  }
 };
 
 
 
 
-const {create, defineProperties} = Object;
-
 // both `html` and `svg` template literal tags are polluted
 // with a `for(ref[, id])` and a `node` tag too
 const tag = type => {
   // both `html` and `svg` tags have their own _cache
-  const keyed = umap(new WeakMap);
+  const keyed = new WeakMapSet;
   // keyed operations always re-use the same _cache and unroll
   // the template and its interpolations right away
   const fixed = _cache => (template, ...values) => unroll(
     _cache,
     {type, template, values}
   );
-  return defineProperties(
+  return Object.assign(
     // non keyed operations are recognized as instance of Hole
     // during the "unroll", recursively resolved and updated
     (template, ...values) => new Hole(type, template, values),
     {
-      for: {
-        // keyed operations need a reference object, usually the parent node
-        // which is showing keyed results, and optionally a unique id per each
-        // related node, handy with JSON results and mutable list of objects
-        // that usually carry a unique identifier
-        value(ref, id) {
-          const memo = keyed.get(ref) || keyed.set(ref, create(null));
-          return memo[id] || (memo[id] = fixed(createCache()));
-        }
+      // keyed operations need a reference object, usually the parent node
+      // which is showing keyed results, and optionally a unique id per each
+      // related node, handy with JSON results and mutable list of objects
+      // that usually carry a unique identifier
+      for(ref, id) {
+        const memo = keyed.get(ref) || keyed.set(ref, new MapSet);
+        return memo.get(id) || memo.set(id, fixed(createCache()));
       },
-      node: {
-        // it is possible to create one-off content out of the box via node tag
-        // this might return the single created node, or a fragment with all
-        // nodes present at the root level and, of course, their child nodes
-        value: (template, ...values) => unroll(
-          createCache(),
-          {type, template, values}
-        ).valueOf()
+      // it is possible to create one-off content out of the box via node tag
+      // this might return the single created node, or a fragment with all
+      // nodes present at the root level and, of course, their child nodes
+      node(template, ...values) {
+        return unroll(createCache(), {type, template, values}).valueOf();
       }
     }
   );
 };
 
 // each rendered node gets its own _cache
-const _cache = umap(new WeakMap);
+const _cache = new WeakMapSet;
 
 // rendering means understanding what `html` or `svg` tags returned
 // and it relates a specific node to its own unique _cache.
@@ -648,12 +619,11 @@ const render = (where, what) => {
   const wire = hole instanceof Hole ? unroll(info, hole) : hole;
   if (wire !== info.wire) {
     info.wire = wire;
-    where.textContent = '';
     // valueOf() simply returns the node itself, but in case it was a "wire"
     // it will eventually re-append all nodes to its fragment so that such
     // fragment can be re-appended many times in a meaningful way
     // (wires are basically persistent fragments facades with special behavior)
-    where.appendChild(wire.valueOf());
+    where.replaceChildren(wire.valueOf());
   }
   return where;
 };

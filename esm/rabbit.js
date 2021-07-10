@@ -1,10 +1,10 @@
-import umap from 'umap';
+import {WeakMapSet} from '@webreflection/mapset';
 import instrument from 'uparser';
 import {indexOf, isArray} from 'uarray';
 import {persistent} from 'uwire';
 
 import {handlers} from './handlers.js';
-import {createFragment, createWalker} from './node.js';
+import createContent from '@ungap/create-content';
 
 // from a fragment container, create an array of indexes
 // related to its child nodes, so that it's possible
@@ -33,7 +33,7 @@ const prefix = 'isµ';
 // should be parsed once, and once only, as it will always represent the same
 // content, within the exact same amount of updates each time.
 // This cache relates each template to its unique content and updates.
-const cache = umap(new WeakMap);
+const cache = new WeakMapSet;
 
 // a RegExp that helps checking nodes that cannot contain comments
 const textOnly = /^(?:plaintext|script|style|textarea|title|xmp)$/i;
@@ -66,10 +66,10 @@ const createEntry = (type, template) => {
 // operation based on the same template, i.e. data => html`<p>${data}</p>`
 const mapTemplate = (type, template) => {
   const text = instrument(template, prefix, type === 'svg');
-  const content = createFragment(text, type);
+  const content = createContent(text, type);
   // once instrumented and reproduced as fragment, it's crawled
   // to find out where each update is in the fragment tree
-  const tw = createWalker(content);
+  const tw = document.createTreeWalker(content, 1 | 128);
   const nodes = [];
   const length = template.length - 1;
   let i = 0;
@@ -209,8 +209,10 @@ const unrollValues = ({stack}, values, length) => {
  * @param {string[]} template The template literals used to the define the content.
  * @param {Array} values Zero, one, or more interpolated values to render.
  */
-export function Hole(type, template, values) {
-  this.type = type;
-  this.template = template;
-  this.values = values;
+export class Hole {
+  constructor(type, template, values) {
+    this.type = type;
+    this.template = template;
+    this.values = values;
+  }
 };

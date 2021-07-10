@@ -1,14 +1,15 @@
 import {nodeResolve} from '@rollup/plugin-node-resolve';
-import babel from '@rollup/plugin-babel';
+import includePaths from 'rollup-plugin-includepaths';
 
 export default {
   input: './esm/index.js',
   plugins: [
-    nodeResolve(),
-    babel({
-      presets: ['@babel/preset-env'],
-      babelHelpers: 'bundled'
-    })
+    includePaths({
+      include: {
+        '@ungap/create-content': 'node_modules/@ungap/degap/create-content.js'
+      },
+    }),
+    nodeResolve()
   ],
   
   output: {
